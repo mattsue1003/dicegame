@@ -575,24 +575,15 @@
                     doc.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight); 
                 }
 
-                // 6. 儲存 PDF (使用 Blob 修正行動裝置下載問題)
+                // 6. 儲存 PDF (更新：使用 jsPDF 內建的 .save() 方法，提高行動裝置相容性)
                 showLoading(true, '正在準備下載...');
 
-                const pdfBlob = doc.output('blob');
-                const blobUrl = URL.createObjectURL(pdfBlob);
+                // 稍微延遲以確保 loading 畫面有時間渲染
+                await new Promise(resolve => setTimeout(resolve, 50));
 
-                const link = document.createElement('a');
-                link.href = blobUrl;
-                link.download = 'WuSanBuChengLi-Game-Cards.pdf'; // 檔案名稱
-                
-                document.body.appendChild(link);
-                link.click();
-                
-                // (更新) 延遲 100 毫秒後再清理，增加行動裝置相容性
-                setTimeout(() => {
-                    document.body.removeChild(link);
-                    URL.revokeObjectURL(blobUrl);
-                }, 100);
+                doc.save('WuSanBuChengLi-Game-Cards.pdf'); // 使用 .save() 直接觸發下載
+
+                // (舊的 Blob/Link 點擊方法已移除)
 
             } catch (err) {
                 console.error("PDF 產生失敗:", err);
