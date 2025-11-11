@@ -138,14 +138,28 @@
             <span class="block sm:inline" id="loading-text">正在產生 PDF 檔案，請稍候...</span>
         </div>
 
-        <!-- 步驟 1: 上傳圖片 --><section id="upload-section">
+        <!-- 步驟 1: 上傳圖片 -->
+        <section id="upload-section">
             <h2 class="text-xl font-semibold text-gray-700 mb-4">1. 上傳 8 個圖案</h2>
             <p class="text-gray-600 mb-4">
-                請上傳 8 個不同的圖案，作為牌卡和骰子的內容。 (建議使用 1:1 比例、背景透明的 PNG 圖片)
+                請「一次上傳 8 個」不同的圖案，作為牌卡和骰子的內容。 (建議使用 1:1 比例、背景透明的 PNG 圖片)
             </p>
-            <!-- 調整 grid 欄位 -->
-            <div class="grid grid-cols-4 md:grid-cols-8 gap-3 md:gap-4 mb-6" id="upload-grid">
-                <!-- 8 個上傳框將由 JS 動態產生 --></div>
+            
+            <!-- (更新) 新的單一上傳按鈕 -->
+            <label for="image-upload-multiple" class="w-full bg-white border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:bg-gray-50 flex flex-col items-center justify-center text-gray-500 mb-4">
+                <svg class="w-12 h-12 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
+                </svg>
+                <span class="mt-2 font-semibold text-gray-600">點擊選擇 8 張圖片</span>
+                <span class="text-sm text-gray-500">(或拖曳檔案到此)</span>
+            </label>
+            <input type="file" id="image-upload-multiple" accept="image/*" class="hidden-input" multiple onchange="handleMultipleImageUpload(event)">
+
+            <!-- (更新) 用於顯示預覽圖的 Grid -->
+            <div class="grid grid-cols-4 md:grid-cols-8 gap-3 md:gap-4 mb-6" id="upload-preview-grid">
+                <!-- 8 個預覽框將由 JS 動態產生 -->
+            </div>
+            
             <button id="generate-btn" onclick="generateGame()" class="w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-blue-700 transition duration-300 disabled:bg-gray-300 disabled:cursor-not-allowed" disabled>
                 產生遊戲
             </button>
@@ -217,7 +231,7 @@
                 </button>
                  <p class="text-center text-sm text-gray-500 mt-3">
                     點擊後將自動下載 PDF (共 8 頁)。<br class="sm:hidden">建議印出後黏貼在厚的 A4 紙上再裁剪。
-                </p>
+                 </p>
             </div>
 
             <!-- 遊戲規則 (遊玩頁) -->
@@ -295,7 +309,8 @@
 
         // --- 初始化 ---
         document.addEventListener('DOMContentLoaded', () => {
-            createUploadBoxes();
+            // (更新) 產生 8 個空的預覽框
+            createUploadPreviewBoxes();
         });
 
         // 隨機洗牌函式 (Fisher-Yates shuffle)
@@ -306,54 +321,98 @@
             }
         }
 
-        // 動態產生 8 個上傳框
-        function createUploadBoxes() {
-            const grid = document.getElementById('upload-grid');
+        // (更新) 動態產生 8 個「預覽框」
+        function createUploadPreviewBoxes() {
+            const grid = document.getElementById('upload-preview-grid');
             grid.innerHTML = ''; // 清空
             for (let i = 0; i < 8; i++) {
                 grid.innerHTML += `
-                    <label id="label-${i}" class="border-2 border-dashed border-gray-300 rounded-lg p-2 text-center cursor-pointer hover:bg-gray-50 aspect-square flex flex-col items-center justify-center text-gray-500">
+                    <div id="preview-box-${i}" class="border-2 border-dashed border-gray-300 rounded-lg p-2 aspect-square flex flex-col items-center justify-center text-gray-500 bg-gray-50">
                         <div id="preview-${i}" class="w-full h-full flex items-center justify-center">
-                            <svg class="w-8 h-8" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                            </svg>
+                            <!-- 預設顯示數字 -->
+                            <span class="text-2xl font-bold text-gray-400">${i + 1}</span>
                         </div>
-                        <input type="file" accept="image/*" class="hidden-input" onchange="handleImageUpload(event, ${i})">
-                    </label>
+                    </div>
                 `;
             }
         }
 
         // --- 圖片上傳處理 ---
-        function handleImageUpload(event, index) {
-            const file = event.target.files[0];
-            if (!file) return;
 
-            if (!file.type.startsWith('image/')) {
-                showError('請上傳圖片檔案 (例如 .png, .jpg)。');
+        // (更新) 處理多張圖片上傳
+        async function handleMultipleImageUpload(event) {
+            const files = event.target.files;
+            if (!files || files.length === 0) return;
+
+            // 檢查是否剛好 8 張
+            if (files.length !== 8) {
+                showError(`您選擇了 ${files.length} 張圖片。請一次剛好選擇 8 張。`);
+                event.target.value = null; // 清空選擇
                 return;
             }
-
-            const reader = new FileReader();
             
-            reader.onload = (e) => {
-                const dataURL = e.target.result;
-                uploadedImages[index] = dataURL;
-                
-                const previewBox = document.getElementById(`preview-${index}`);
-                previewBox.innerHTML = `<img src="${dataURL}" class="max-w-full max-h-full object-contain rounded-md">`;
-                
-                checkAllImagesUploaded();
-            };
+            hideError();
+            showLoading(true, '正在讀取 8 張圖片...');
+            
+            // 重設
+            uploadedImages = new Array(8).fill(null);
+            checkAllImagesUploaded(); // 會 disable 按鈕
+            createUploadPreviewBoxes(); // 重設預覽框
 
-            reader.onerror = () => {
-                showError('讀取檔案時發生錯誤。');
-                uploadedImages[index] = null;
-                checkAllImagesUploaded();
-            };
+            const promises = [];
+            
+            // 使用 Array.from 確保
+            const fileList = Array.from(files);
 
-            reader.readAsDataURL(file);
+            for (let i = 0; i < fileList.length; i++) {
+                const file = fileList[i];
+                if (!file.type.startsWith('image/')) {
+                    showError(`檔案 "${file.name}" 不是圖片。請重新上傳。`);
+                    showLoading(false);
+                    event.target.value = null; // 清空選擇
+                    uploadedImages = new Array(8).fill(null); // 清空
+                    createUploadPreviewBoxes(); // 重設預覽
+                    return; // 中斷
+                }
+
+                const promise = new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        const dataURL = e.target.result;
+                        uploadedImages[i] = dataURL;
+                        
+                        // 更新預覽
+                        const previewBox = document.getElementById(`preview-${i}`);
+                        if (previewBox) {
+                             previewBox.innerHTML = `<img src="${dataURL}" class="max-w-full max-h-full object-contain rounded-md">`;
+                        }
+                        resolve(true); // 標記成功
+                    };
+                    reader.onerror = (err) => {
+                        console.error("讀取檔案失敗:", file.name, err);
+                        reject(new Error(`讀取檔案 ${file.name} 失敗`));
+                    };
+                    reader.readAsDataURL(file);
+                });
+                promises.push(promise);
+            }
+
+            try {
+                await Promise.all(promises);
+                // 全部成功
+                showLoading(false);
+                checkAllImagesUploaded(); // 檢查是否 8 張都 OK
+            } catch (err) {
+                console.error("讀取圖片失敗:", err);
+                showError(err.message || '讀取圖片時發生錯誤。');
+                showLoading(false);
+                // 清理
+                uploadedImages = new Array(8).fill(null);
+                checkAllImagesUploaded();
+                createUploadPreviewBoxes();
+            }
         }
+
 
         // 檢查 8 張圖是否都上傳了
         function checkAllImagesUploaded() {
@@ -529,8 +588,11 @@
                 document.body.appendChild(link);
                 link.click();
                 
-                document.body.removeChild(link);
-                URL.revokeObjectURL(blobUrl);
+                // (更新) 延遲 100 毫秒後再清理，增加行動裝置相容性
+                setTimeout(() => {
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(blobUrl);
+                }, 100);
 
             } catch (err) {
                 console.error("PDF 產生失敗:", err);
