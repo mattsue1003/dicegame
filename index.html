@@ -506,7 +506,7 @@
 
         // 按下 "下載 PDF" 按鈕
         async function downloadPDF() {
-            showLoading(true, '正在產生 PDF 檔案，64 張卡片，請稍候...');
+            showLoading(true, '正在初始化 PDF 產生器...');
             hideError(); 
 
             // 取得 "顯示文字" 選項
@@ -516,30 +516,46 @@
                 const doc = new jsPDF('p', 'mm', 'a4'); // 縱向, 單位 mm, A4 尺寸
                 const cardContainer = document.getElementById('card-print-area');
                 
-                const cardsPerPage = 8; // 2x4
+                // --- (更新) 定義卡片在 A4 上的絕對位置 (X, Y) ---
+                const pageMargin = 5, colGap = 5, rowGap = 5, cardWidth = 95, cardHeight = 67;
+                // 8 個卡片位置 [R0C0, R0C1, R1C0, R1C1, ...]
+                const cardPositions = [
+                    { x: pageMargin, y: pageMargin }, // R0, C0
+                    { x: pageMargin + cardWidth + colGap, y: pageMargin }, // R0, C1
+                    { x: pageMargin, y: pageMargin + cardHeight + rowGap }, // R1, C0
+                    { x: pageMargin + cardWidth + colGap, y: pageMargin + cardHeight + rowGap }, // R1, C1
+                    { x: pageMargin, y: pageMargin + 2 * (cardHeight + rowGap) }, // R2, C0
+                    { x: pageMargin + cardWidth + colGap, y: pageMargin + 2 * (cardHeight + rowGap) }, // R2, C1
+                    { x: pageMargin, y: pageMargin + 3 * (cardHeight + rowGap) }, // R3, C0
+                    { x: pageMargin + cardWidth + colGap, y: pageMargin + 3 * (cardHeight + rowGap) } // R3, C1
+                ];
+                
+                const cardsPerPage = 8;
                 const numPages = Math.ceil(cardCombinations.length / cardsPerPage); // 64 / 8 = 8 頁
                 
-                const a4Width = 210;
-                const a4Height = 297;
-
+                // --- (更新) 主要迴圈：一頁一頁產生 ---
                 for (let p = 0; p < numPages; p++) {
-                    // 1. 取得這一頁的卡片組合
+                    showLoading(true, `正在產生 PDF 第 ${p + 1} / ${numPages} 頁...`);
+                    
+                    if (p > 0) {
+                        doc.addPage();
+                    }
+                    
+                    // 1. 取得這一頁的 8 張卡片組合
                     const pageSlice = cardCombinations.slice(p * cardsPerPage, (p + 1) * cardsPerPage);
                     
-                    // 2. 產生這一頁的 HTML
-                    let pageHtml = `<div class="pdf-page">`;
+                    // 2. 產生這 8 張卡片的 HTML，並放入隱藏容器中
+                    let pageHtml = '';
                     for (const combo of pageSlice) {
                         const imageUrl = uploadedImages[combo.imageIndex];
                         const size = SIZES[combo.sizeIndex];
-
                         let textHtml = '';
                         if (showText) {
                             textHtml = `<div class="pdf-card-text-wrapper"><span>${size.name}</span></div>`;
                         }
-
-                        // 如果不顯示文字，新增 inline-style 來置中圖片
                         const cardStyle = showText ? '' : 'style="justify-content: center;"';
 
+                        // (注意：這裡不再需要 .pdf-page 容器)
                         pageHtml += `
                             <div class="pdf-card" ${cardStyle}>
                                 <div class="pdf-card-img-wrapper">
@@ -549,45 +565,60 @@
                             </div>
                         `;
                     }
-                    pageHtml += `</div>`;
-                    
                     cardContainer.innerHTML = pageHtml;
-                    
-                    // 3. 取得要轉換的 HTML 元素
-                    const pageElement = cardContainer.querySelector('.pdf-page');
 
-                    // 4. 使用 html2canvas 將 HTML 轉為 Canvas (提高 scale 增加解析度)
-                    const canvas = await html2canvas(pageElement, {
-                        scale: 3, // 提高解析度
-                        useCORS: true 
-                    });
-                    
-                    const imgData = canvas.toDataURL('image/png');
+                    // 讓瀏覽器有時間渲染這 8 張卡片
+                    await new Promise(resolve => setTimeout(resolve, 50)); 
 
-                    // 5. 將 Canvas 圖片加入 PDF
-                    if (p > 0) {
-                        doc.addPage();
+                    // 3. 取得這 8 張卡片的 DOM 元素
+                    const cardElements = cardContainer.querySelectorAll('.pdf-card');
+                    
+                    // 4. (更新) 迴圈這 8 張卡片，「單獨」轉換並加入 PDF
+                    for (let i = 0; i < cardElements.length; i++) {
+                        const cardEl = cardElements[i];
+                        const pos = cardPositions[i]; // 取得這張卡片在 A4 上的位置
+                        
+                        const canvas = await html2canvas(cardEl, {
+                            scale: 2, // (重要) 將 scale 從 3 降至 2，大幅減少記憶體
+                            useCORS: true,
+                            backgroundColor: '#ffffff' // 確保背景是白色
+                        });
+                        
+                        const imgData = canvas.toDataURL('image/png');
+                        
+                        // 5. 將這張卡片的圖片加入 PDF 的指定位置
+                        doc.addImage(imgData, 'PNG', pos.x, pos.y, cardWidth, cardHeight);
                     }
+                } // --- 頁面迴圈結束 ---
 
-                    const imgWidth = a4Width;
-                    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-                    doc.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight); 
-                }
-
-                // 6. 儲存 PDF (更新：使用 jsPDF 內建的 .save() 方法，提高行動裝置相容性)
+                // 6. 儲存 PDF (更新：參照 H(6,3) 檔案，使用 Blob/Link 點擊方法)
                 showLoading(true, '正在準備下載...');
+                await new Promise(resolve => setTimeout(resolve, 50)); // 讓 loading 先生效
 
-                // 稍微延遲以確保 loading 畫面有時間渲染
-                await new Promise(resolve => setTimeout(resolve, 50));
+                // 產生 Blob
+                const pdfBlob = doc.output('blob');
 
-                doc.save('WuSanBuChengLi-Game-Cards.pdf'); // 使用 .save() 直接觸發下載
+                // 建立 Blob URL
+                const blobUrl = URL.createObjectURL(pdfBlob);
 
-                // (舊的 Blob/Link 點擊方法已移除)
+                // 建立一個隱藏的下載連結
+                const link = document.createElement('a');
+                link.href = blobUrl;
+                link.download = 'WuSanBuChengLi-Game-Cards.pdf'; // 使用此檔案的正確名稱
+
+                // 將連結附加到 body
+                document.body.appendChild(link);
+
+                // 模擬點擊
+                link.click();
+
+                // (重要) 立即清理
+                document.body.removeChild(link);
+                URL.revokeObjectURL(blobUrl);
 
             } catch (err) {
                 console.error("PDF 產生失敗:", err);
-                showError('產生 PDF 時發生錯誤。請再試一次。');
+                showError('產生 PDF 時發生嚴重錯誤。可能是圖片太大或瀏覽器記憶體不足。');
             } finally {
                 // 7. 清理
                 showLoading(false); // 隱藏 loading
